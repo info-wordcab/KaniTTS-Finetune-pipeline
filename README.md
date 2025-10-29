@@ -123,8 +123,8 @@ max_duration_sec: 12  # Maximum audio duration in seconds
 
 datasets:
   - type: hf
-    dataset_id: "alice-en"
-    reponame: "your-username/tts-alice"
+    dataset_id: "speaker-a"
+    reponame: "your-hf-username/dataset-a-nano"
     name: null
     split: train
     text_col_name: text
@@ -133,11 +133,12 @@ datasets:
     nano_layer_3: nano_layer_3
     nano_layer_4: nano_layer_4
     encoded_len: encoded_len
-    speaker_id: "alice"
+    speaker_id: "speaker_a"
 
-  - type: local
-    dataset_id: "au-podcasts"
-    path: /path/to/local/nanocodec/dataset
+  - type: hf
+    dataset_id: "speaker-b"
+    reponame: "your-hf-username/dataset-b-nano"
+    name: null
     split: train
     text_col_name: text
     nano_layer_1: nano_layer_1
@@ -145,8 +146,8 @@ datasets:
     nano_layer_3: nano_layer_3
     nano_layer_4: nano_layer_4
     encoded_len: encoded_len
-    speaker_id: "podcast_host"
-    max_len: 10000
+    speaker_id: "speaker_b"
+    max_len: 4000
 ```
 
 **Supported dataset types:**
