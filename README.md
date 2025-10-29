@@ -80,7 +80,13 @@ This will authenticate you with:
 
 ### Step 3: Configure Your Experiments
 
-Edit the configuration files (detailed explanation below):
+Copy the dataset template and edit the configuration files (detailed explanation below):
+
+```bash
+cp config/dataset_config.example.yaml config/dataset_config.yaml
+```
+
+Then update:
 1. `config/dataset_config.yaml` - Your training datasets
 2. `config/experiments.yaml` - Hyperparameters for your experiments
 
@@ -115,53 +121,63 @@ This file tells the pipeline where to find your training data and how to process
 ```yaml
 max_duration_sec: 12  # Maximum audio duration in seconds
 
-hf_datasets:
-  - reponame: "your-username/your-dataset-repo"
-    name: "default"  # Subset name (use "default" if no subsets)
-    split: "train"
-    text_col_name: text  # Column containing transcriptions
-    nano_layer_1: nano_layer_1  # codec layer 1
-    nano_layer_2: nano_layer_2  # codec layer 2
-    nano_layer_3: nano_layer_3  # codec layer 3
-    nano_layer_4: nano_layer_4  # codec layer 4
-    encoded_len: encoded_len    # Audio length in frames
-    speaker_id: "alice"  # OPTIONAL: speaker identifier
-    max_len: 10000      # OPTIONAL: limit number of samples
+datasets:
+  - type: hf
+    dataset_id: "alice-en"
+    reponame: "your-username/tts-alice"
+    name: null
+    split: train
+    text_col_name: text
+    nano_layer_1: nano_layer_1
+    nano_layer_2: nano_layer_2
+    nano_layer_3: nano_layer_3
+    nano_layer_4: nano_layer_4
+    encoded_len: encoded_len
+    speaker_id: "alice"
+
+  - type: local
+    dataset_id: "au-podcasts"
+    path: /path/to/local/nanocodec/dataset
+    split: train
+    text_col_name: text
+    nano_layer_1: nano_layer_1
+    nano_layer_2: nano_layer_2
+    nano_layer_3: nano_layer_3
+    nano_layer_4: nano_layer_4
+    encoded_len: encoded_len
+    speaker_id: "podcast_host"
+    max_len: 10000
 ```
 
-**Required Fields:**
-- `reponame`: Your HuggingFace dataset repository (must be tokenized with NanoCodec)
-- `text_col_name`: Column name containing text transcriptions
-- `nano_layer_1/2/3/4`: Column names for the 4 codec layers
-- `encoded_len`: Column with audio length in codec frames
+**Supported dataset types:**
 
-**Optional Fields:**
+| `type` | Description |
+|--------|-------------|
+| `hf`   | Load directly from HuggingFace Hub via `datasets.load_dataset`. |
+| `local` | Load a dataset saved with `datasets.save_to_disk` (for example, the output of the NanoCodec pipeline). |
 
-**`speaker_id`** (HIGHLY RECOMMENDED for multi-speaker datasets):
-- If specified: The pipeline prepends this to each text prompt (`"alice: Hello world"`)
-- If omitted: Text is used as-is without speaker prefix
-- **⚠️ IMPORTANT**: Each dataset in the list should represent **ONE speaker only**
-  - ✅ Good: One dataset per speaker with `speaker_id: "alice"`
-  - ❌ Bad: One dataset with multiple speakers and no speaker_id
-  - Why? This helps the model learn speaker-specific characteristics
+**Required fields for every entry:**
+- `text_col_name`, `nano_layer_1/2/3/4`, `encoded_len`: column names that contain tokens and frame lengths.
 
-**`max_len`**:
-- Limits the number of samples from this dataset
-- Useful for balancing datasets or quick testing
+**Additional fields for HuggingFace datasets:**
+- `reponame`: HuggingFace repository containing the dataset.
+- `name`: Optional subset/config name (`null` for the default subset).
+- `split`: Which split to load (`train`, `validation`, etc.).
 
-**`categorical_filter`**:
-```yaml
-categorical_filter:
-  column_name: "speaker"
-  value: "speaker_001"
-```
-- Filters dataset to only include rows where `column_name == value`
+**Additional fields for local datasets:**
+- `path`: Filesystem path to the saved dataset (relative paths resolve against the `config/` folder).
+- `split`: Optional; required only if the saved dataset contains multiple splits.
+
+**Optional helpers for any dataset:**
+- `speaker_id`: Prepends a speaker tag to every prompt—highly recommended when mixing speakers.
+- `max_len`: Limits how many samples are taken from this dataset.
+- `categorical_filter`: Keep only rows where `column_name == value`.
 
 #### What the Pipeline Does
 
 When you run training, the dataset processor:
 
-1. **Loads** all datasets from HuggingFace Hub
+1. **Loads** all configured datasets (HuggingFace or local `save_to_disk`)
 2. **Filters** by duration (removes samples longer than `max_duration_sec`)
 3. **Renames** columns to standard names
 4. **Applies** categorical filters if specified
@@ -180,10 +196,12 @@ The processing uses **multiprocessing** for speed, automatically detecting your 
 ```yaml
 max_duration_sec: 12
 
-hf_datasets:
-  - reponame: "my-username/alice-voice-nano"
-    name: "default"
-    split: "train"
+datasets:
+  - type: hf
+    dataset_id: "alice"
+    reponame: "my-username/alice-voice-nano"
+    name: null
+    split: train
     text_col_name: text
     nano_layer_1: nano_layer_1
     nano_layer_2: nano_layer_2
@@ -198,11 +216,13 @@ hf_datasets:
 ```yaml
 max_duration_sec: 12
 
-hf_datasets:
+datasets:
   # Alice's voice
-  - reponame: "my-username/alice-voice-nano"
-    name: "default"
-    split: "train"
+  - type: hf
+    dataset_id: "alice"
+    reponame: "my-username/alice-voice-nano"
+    name: null
+    split: train
     text_col_name: text
     nano_layer_1: nano_layer_1
     nano_layer_2: nano_layer_2
@@ -213,9 +233,11 @@ hf_datasets:
     max_len: 5000
 
   # Bob's voice
-  - reponame: "my-username/bob-voice-nano"
-    name: "default"
-    split: "train"
+  - type: hf
+    dataset_id: "bob"
+    reponame: "my-username/bob-voice-nano"
+    name: null
+    split: train
     text_col_name: text
     nano_layer_1: nano_layer_1
     nano_layer_2: nano_layer_2

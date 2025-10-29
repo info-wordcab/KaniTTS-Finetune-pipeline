@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 import torch
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 import locale
@@ -12,6 +12,7 @@ from functools import partial
 import math
 import random
 import numpy as np
+from pathlib import Path
 from config_loader import config_loader
 
 
@@ -27,9 +28,13 @@ def load_config(config_path: str = './config/dataset_config.yaml'):
     resolved_path = os.path.abspath(config_path)
     print(f'📁 CONFIG: Loading configuration from {resolved_path}')
     if not os.path.exists(resolved_path):
-        raise FileNotFoundError(f"Config file not found: {resolved_path}")
+        raise FileNotFoundError(
+            f"Config file not found: {resolved_path}. Copy config/dataset_config.example.yaml to dataset_config.yaml and customize it."
+        )
     config = OmegaConf.load(resolved_path)
-    print(f'✅ CONFIG: Successfully loaded configuration with {len(config.hf_datasets)} datasets')
+    config['_config_root'] = os.path.dirname(resolved_path)
+    datasets_cfg = config.get('datasets') or []
+    print(f'✅ CONFIG: Successfully loaded configuration with {len(datasets_cfg)} dataset(s)')
     return config
 
 
@@ -142,50 +147,116 @@ def process_shard(shard_idx, shard_data, tokenizer_name, max_dur, speaker_id):
 
 
 class ItemDataset:
-    def __init__(self, item_cfg: OmegaConf, tokenizer_name: str, max_dur: int, n_shards: int = None):
-        print(f'📦 DATASET: Loading dataset "{item_cfg.name}" from {item_cfg.reponame}...')
+    def __init__(
+        self,
+        item_cfg: OmegaConf,
+        tokenizer_name: str,
+        max_dur: int,
+        n_shards: int = None,
+        config_root: str = None,
+    ):
         self.item_cfg = item_cfg
         self.tokenizer_name = tokenizer_name
         self.max_dur = max_dur
         self.speaker_id = self.item_cfg.get('speaker_id')
         self.max_len = self.item_cfg.get('max_len')
-        
+        self.config_root = Path(config_root) if config_root else None
+
+        self.dataset_type = (self.item_cfg.get('type') or 'hf').lower()
+        self.dataset_id = (
+            self.item_cfg.get('dataset_id')
+            or self.item_cfg.get('name')
+            or self.item_cfg.get('reponame')
+            or self.item_cfg.get('path')
+            or 'dataset'
+        )
+
         if n_shards is None:
             self.n_shards = min(mp.cpu_count(), 8)
         else:
             self.n_shards = n_shards
-            
-        eval_cfg = config_loader.get_eval_config()
-        self.dataset = load_dataset(
-            self.item_cfg.reponame,
-            self.item_cfg.name,
-            split=self.item_cfg.split,
-            num_proc=eval_cfg.processing.num_proc
-            )
 
-        print(f'📊 DATASET: Loaded {len(self.dataset)} samples from {item_cfg.name}')
+        print(f'📦 DATASET: Loading {self.dataset_type} dataset "{self.dataset_id}"...')
+        self.dataset = self._load_dataset()
+
+        print(f'📊 DATASET: Loaded {len(self.dataset)} samples from {self.dataset_id}')
         print(f'🔧 DATASET: Will process with {self.n_shards} shards')
 
         if self.item_cfg.get('categorical_filter'):
-            print(f'🔧 DATASET: Filtering by {self.item_cfg.categorical_filter.column_name} = {self.item_cfg.categorical_filter.value}')
-            self.dataset = self.dataset.filter(lambda x: x[self.item_cfg.categorical_filter.column_name] == self.item_cfg.categorical_filter.value)
+            column_name = self.item_cfg.categorical_filter.column_name
+            value = self.item_cfg.categorical_filter.value
+            print(f'🔧 DATASET: Filtering by {column_name} = {value}')
+            self.dataset = self.dataset.filter(lambda x: x[column_name] == value)
             print(f'✅ DATASET: Filtered {len(self.dataset)} samples')
-        
-        print(f'🔄 DATASET: Renaming columns...')
-        rename_dict = {
-            self.item_cfg.text_col_name: 'text',
-            self.item_cfg.nano_layer_1: 'nano_layer_1',
-            self.item_cfg.nano_layer_2: 'nano_layer_2',
-            self.item_cfg.nano_layer_3: 'nano_layer_3',
-            self.item_cfg.nano_layer_4: 'nano_layer_4',
-            self.item_cfg.encoded_len: 'encoded_len',
-        }
-        self.dataset = self.dataset.rename_columns(rename_dict)
-        print(f'✅ DATASET: Column renaming completed for {item_cfg.name}')
+
+        print(f'🔄 DATASET: Renaming columns if necessary...')
+        rename_pairs = [
+            (self.item_cfg.get('text_col_name'), 'text'),
+            (self.item_cfg.get('nano_layer_1'), 'nano_layer_1'),
+            (self.item_cfg.get('nano_layer_2'), 'nano_layer_2'),
+            (self.item_cfg.get('nano_layer_3'), 'nano_layer_3'),
+            (self.item_cfg.get('nano_layer_4'), 'nano_layer_4'),
+            (self.item_cfg.get('encoded_len'), 'encoded_len'),
+        ]
+
+        rename_dict = {}
+        for source, target in rename_pairs:
+            if source is None or target is None:
+                continue
+            if source not in self.dataset.column_names:
+                raise KeyError(
+                    f"Column '{source}' not found in dataset '{self.dataset_id}'."
+                )
+            if source != target:
+                rename_dict[source] = target
+
+        if rename_dict:
+            self.dataset = self.dataset.rename_columns(rename_dict)
+        print(f'✅ DATASET: Column preparation completed for {self.dataset_id}')
+
+    def _resolve_path(self, path_str: str) -> Path:
+        path = Path(path_str)
+        if not path.is_absolute() and self.config_root:
+            path = self.config_root / path
+        return path.expanduser().resolve()
+
+    def _load_dataset(self):
+        eval_cfg = config_loader.get_eval_config()
+        num_proc = eval_cfg.processing.num_proc
+
+        if self.dataset_type in ("hf", "huggingface", "hugging_face"):
+            repo_id = self.item_cfg.get('reponame')
+            if not repo_id:
+                raise ValueError(f"'reponame' must be provided for HuggingFace datasets ({self.dataset_id}).")
+            subset = self.item_cfg.get('name')
+            if subset in (None, 'null', 'None'):
+                subset = None
+            split = self.item_cfg.get('split', 'train')
+            return load_dataset(repo_id, subset, split=split, num_proc=num_proc)
+
+        if self.dataset_type in ("local", "disk", "hf_disk"):
+            data_path = self.item_cfg.get('path') or self.item_cfg.get('data_dir')
+            if not data_path:
+                raise ValueError(f"'path' must be provided for local datasets ({self.dataset_id}).")
+            dataset_path = self._resolve_path(data_path)
+            if not dataset_path.exists():
+                raise FileNotFoundError(f"Local dataset path not found: {dataset_path}")
+
+            loaded = load_from_disk(str(dataset_path))
+            if isinstance(loaded, DatasetDict):
+                split_name = self.item_cfg.get('split', 'train')
+                if split_name not in loaded:
+                    raise KeyError(
+                        f"Split '{split_name}' not found in dataset at {dataset_path}. Available splits: {list(loaded.keys())}"
+                    )
+                return loaded[split_name]
+            return loaded
+
+        raise ValueError(f"Unsupported dataset type '{self.dataset_type}' for entry {self.dataset_id}.")
 
 
     def __call__(self):
-        print(f'🔄 DATASET: Starting parallel processing of {self.item_cfg.name}...')
+        print(f'🔄 DATASET: Starting parallel processing of {self.dataset_id}...')
         
         shards = []
         for i in range(self.n_shards):
@@ -219,7 +290,7 @@ class ItemDataset:
         final_dataset = concatenate_datasets(final_shards)
         if self.max_len is not None:
             final_dataset = final_dataset.shuffle(seed=42).select(range(self.max_len))
-        print(f'✅ DATASET: {self.item_cfg.name} processing completed! Final size: {len(final_dataset)} samples')
+        print(f'✅ DATASET: {self.dataset_id} processing completed! Final size: {len(final_dataset)} samples')
         
         return final_dataset
 
@@ -230,21 +301,26 @@ class DatasetProcessor:
         self.cfg = load_config()
         self.tokenizer_name = tokenizer_name
         self.n_shards_per_dataset = n_shards_per_dataset
-        print(f'✅ INIT: DatasetProcessor initialized with {len(self.cfg.hf_datasets)} datasets to process')
+        dataset_entries = self.cfg.get('datasets') or []
+        print(f'✅ INIT: DatasetProcessor initialized with {len(dataset_entries)} dataset(s) to process')
         if n_shards_per_dataset:
             print(f'🔧 INIT: Each dataset will be processed with {n_shards_per_dataset} shards')
+        self.config_root = self.cfg.get('_config_root')
 
     def __call__(self):
         print(f'🔄 MASTER: Starting master dataset processing...')
         datasets = []
         
-        for i, item_cfg in enumerate(self.cfg.hf_datasets, 1):
-            print(f'📦 MASTER: Processing dataset {i}/{len(self.cfg.hf_datasets)}: {item_cfg.name}')
+        dataset_entries = self.cfg.get('datasets') or []
+        for i, item_cfg in enumerate(dataset_entries, 1):
+            dataset_label = item_cfg.get('dataset_id') or item_cfg.get('name') or item_cfg.get('reponame') or item_cfg.get('path') or f'dataset_{i}'
+            print(f'📦 MASTER: Processing dataset {i}/{len(dataset_entries)}: {dataset_label}')
             item_ds_maker = ItemDataset(
                 item_cfg=item_cfg,
                 tokenizer_name=self.tokenizer_name,
                 max_dur = self.cfg.max_duration_sec,
-                n_shards=self.n_shards_per_dataset
+                n_shards=self.n_shards_per_dataset,
+                config_root=self.config_root
             )
             datasets.append(item_ds_maker())
 
@@ -253,5 +329,3 @@ class DatasetProcessor:
         final_dataset = final_dataset.shuffle()
         print(f'🎉 MASTER: All datasets processed and concatenated! Final dataset size: {len(final_dataset)} samples')
         return final_dataset
-
-

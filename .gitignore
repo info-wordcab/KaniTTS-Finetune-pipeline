@@ -1,0 +1,14 @@
+# Python cache & virtualenvs
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+venv_*/
+
+# Local configuration overrides
+config/dataset_config.yaml
+
+# OS junk
+.DS_Store
+Thumbs.db

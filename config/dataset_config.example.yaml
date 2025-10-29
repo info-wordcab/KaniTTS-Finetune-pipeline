@@ -1,0 +1,31 @@
+max_duration_sec: 12  # Maximum audio duration (seconds) or null to disable
+
+datasets:
+  - type: hf                                   # HuggingFace-hosted dataset
+    dataset_id: speaker-en
+    reponame: your-username/tts-dataset-en
+    name: null                                 # Subset name or null
+    split: train
+    text_col_name: text
+    nano_layer_1: nano_layer_1
+    nano_layer_2: nano_layer_2
+    nano_layer_3: nano_layer_3
+    nano_layer_4: nano_layer_4
+    encoded_len: encoded_len
+    speaker_id: alice                          # Optional speaker prefix
+    categorical_filter:                        # Optional row filter (column == value)
+      column_name: speaker
+      value: alice
+
+  - type: local                                # Dataset saved locally (load_from_disk)
+    dataset_id: au-podcasts
+    path: /path/to/local/nanocodec/dataset     # Directory produced by save_to_disk
+    split: train                               # Required if dataset has multiple splits
+    text_col_name: text
+    nano_layer_1: nano_layer_1
+    nano_layer_2: nano_layer_2
+    nano_layer_3: nano_layer_3
+    nano_layer_4: nano_layer_4
+    encoded_len: encoded_len
+    speaker_id: podcast_host                   # Optional
+    max_len: 2000                              # Optional sample cap (remove for full set)
