@@ -1,0 +1,28 @@
+base_model: "nineninesix/kani-tts-450m-0.2-pt"
+project_name: "tts-finetune"
+
+experiments:
+  - base:
+      model_id: "speaker-a-lora32"
+      run_name: "speaker-a-lora32"
+      desc: "Comprehensive LoRA finetune (r=32) on attention + MLP blocks"
+    lora_args:
+      r: 32
+      lora_alpha: 32
+      lora_dropout: 0.1
+      target_modules: [q_proj, k_proj, v_proj, out_proj, w1, w2, w3]
+      bias: "none"
+      modules_to_save: null
+      task_type: CAUSAL_LM
+      use_rslora: true
+    trainer_args:
+      num_train_epochs: 3
+      per_device_train_batch_size: 1
+      gradient_accumulation_steps: 4
+      max_grad_norm: 1.0
+      bf16: true
+      learning_rate: 5e-5
+      lr_scheduler_type: cosine
+      warmup_ratio: 0.1
+      weight_decay: 0.02
+      optim: adamw_torch

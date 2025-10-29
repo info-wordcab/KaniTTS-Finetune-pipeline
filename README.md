@@ -80,10 +80,11 @@ This will authenticate you with:
 
 ### Step 3: Configure Your Experiments
 
-Copy the dataset template and edit the configuration files (detailed explanation below):
+Copy the templates and edit the configuration files (detailed explanation below):
 
 ```bash
 cp config/dataset_config.example.yaml config/dataset_config.yaml
+cp config/experiments.example.yaml config/experiments.yaml
 ```
 
 Then update:
@@ -148,6 +149,27 @@ datasets:
     encoded_len: encoded_len
     speaker_id: "speaker_b"
     max_len: 4000
+```
+
+##### Local Dataset Example (`type: local`)
+
+```yaml
+max_duration_sec: 12
+
+datasets:
+  - type: local
+    dataset_id: "podcast"
+    path: /path/to/nanocodec/podcast-dataset   # Directory produced by save_to_disk
+    split: train                               # Required if multiple splits exist
+    text_col_name: text
+    nano_layer_1: nano_layer_1
+    nano_layer_2: nano_layer_2
+    nano_layer_3: nano_layer_3
+    nano_layer_4: nano_layer_4
+    encoded_len: encoded_len
+    speaker_id: "podcast_host"
+    max_len: 3000
+```
 ```
 
 **Supported dataset types:**
