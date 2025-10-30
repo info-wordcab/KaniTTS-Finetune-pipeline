@@ -1,4 +1,6 @@
 eval_set:
-  - sample_01: "speaker_a: Hi there! Thanks for listening to this demo of our TTS model."
-  - sample_02: "speaker_a: The quick brown fox jumps over the lazy dog while rain drizzles softly."
-  - sample_03: "speaker_a: Machine learning research keeps accelerating, so pace yourself and stay hydrated."
+  - sample_01: "podcast_host: The install instructions here will generally apply to all supported Linux distributions. An example difference is that your distribution may support yum instead of apt. The specific examples shown were run on an Ubuntu 18.04 machine."
+  - sample_02: "podcast_host: The quick brown fox jumps over the lazy dog while rain drizzles softly."
+  - sample_03: "podcast_host:  Hi there! Thanks for listening to this demo of our TTS model."
+  - sample_04: "podcast_host: PyTorch can be installed and used on various Linux distributions. Depending on your system and compute requirements, your experience with PyTorch on Linux may vary in terms of processing time. It is recommended, but not required, that your Linux system has an NVIDIA or AMD GPU in order to harness the full power of PyTorch's CUDA support or ROCm support."
+

@@ -3,6 +3,7 @@ from datasets import Dataset, Audio
 from omegaconf import OmegaConf
 from inference import NemoAudioPlayer, KaniModel
 import os
+from pathlib import Path
 from scipy.io.wavfile import write
 from config_loader import config_loader
 
@@ -11,8 +12,8 @@ eval_cfg = config_loader.get_eval_config()
 model_cfg = config_loader.get_model_config()
 
 # Create audio output directory
-audio_dir = eval_cfg.paths.audio_output_dir
-os.makedirs(audio_dir, exist_ok=True)
+audio_dir = Path(eval_cfg.paths.audio_output_dir).expanduser().resolve()
+audio_dir.mkdir(parents=True, exist_ok=True)
 
 def load_config(config_path: str = './config/experiments.yaml'):
     """Load configuration from a YAML file using OmegaConf.
@@ -56,13 +57,13 @@ for sentence in eval_set.eval_set:
         print(f"--- Generating: {id_} ---")
         sentence = sentence[id_]
         wave, _ = model.run_model(sentence)
-        audio_path = os.path.join(audio_dir, f"base_model: {exp_cfg.base_model.replace('/', '__')}_{id_}.wav")
+        audio_path = audio_dir / f"base_model_{exp_cfg.base_model.replace('/', '__')}_{id_}.wav"
         row = {
             "experiment_id": f"base_model: {exp_cfg.base_model}",
             "train_configuration": {'base_model': exp_cfg.base_model},
             "sentence_id": id_,
             "sentence": sentence,
-            "audio": audio_path
+            "audio": str(audio_path)
         }
         dataset.append(row)
         write(audio_path, sample_rate, wave)
@@ -72,24 +73,24 @@ for sentence in eval_set.eval_set:
 
 # --- finetuned models check ---
 
-checkpoints_dir = eval_cfg.paths.checkpoints_dir
+checkpoints_dir = Path(eval_cfg.paths.checkpoints_dir).expanduser().resolve()
 for exp_id in exp_cfg.experiments:
-    model_path = os.path.join(checkpoints_dir, exp_id.base.model_id)
+    model_path = (checkpoints_dir / exp_id.base.model_id).resolve()
     print(f"=== Loading model from {model_path} ===")
-    model = KaniModel(config=None, model_name=model_path, player=player)
+    model = KaniModel(config=None, model_name=str(model_path), player=player)
     for sentence in eval_set.eval_set:
         try:
             id_ = list(sentence.keys())[0]
             print(f"--- Generating: {id_} ---")
             sentence = sentence[id_]
             wave, _ = model.run_model(sentence)
-            audio_path = os.path.join(audio_dir, f"{exp_id.base.model_id}_{id_}.wav")
+            audio_path = audio_dir / f"{exp_id.base.model_id}_{id_}.wav"
             row = {
                 "experiment_id": exp_id.base.model_id,
                 "train_configuration": OmegaConf.to_container(exp_id),
                 "sentence_id": id_,
                 "sentence": sentence,
-                "audio": audio_path
+                "audio": str(audio_path)
             }
             dataset.append(row)
             write(audio_path, sample_rate, wave)

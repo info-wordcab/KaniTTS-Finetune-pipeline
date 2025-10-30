@@ -2,6 +2,7 @@ import torch
 from nemo.collections.tts.models import AudioCodecModel
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
+from pathlib import Path
 import numpy as np
 from config_loader import config_loader
 
@@ -134,13 +135,25 @@ class KaniModel:
 
         self.player = player
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = AutoModelForCausalLM.from_pretrained(
-                                model_name,
-                                torch_dtype=torch_dtype,
-                                device_map=device_map,
-                            )
+        model_path = Path(model_name)
+        is_local = model_path.exists()
+        load_kwargs = {
+            "torch_dtype": torch_dtype,
+            "device_map": device_map,
+            "trust_remote_code": True,
+        }
+        if is_local:
+            load_kwargs["local_files_only"] = True
+            model_id = str(model_path.resolve())
+        else:
+            model_id = model_name
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            **load_kwargs,
+        )
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 
     def get_input_ids(self, text_promt:str)->tuple[torch.tensor]:
         START_OF_HUMAN = self.player.start_of_human

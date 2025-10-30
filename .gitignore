@@ -9,6 +9,8 @@ venv_*/
 # Local configuration overrides
 config/dataset_config.yaml
 config/experiments.yaml
+eval_audio/
+wandb/
 
 # OS junk
 .DS_Store

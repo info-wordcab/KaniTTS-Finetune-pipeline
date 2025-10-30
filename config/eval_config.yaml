@@ -3,12 +3,12 @@
 
 paths:
   audio_output_dir: "./eval_audio"
-  checkpoints_dir: "./checkpoints"
+  checkpoints_dir: "/scratch2/kani_tts/au_500k/checkpoints/"
 
 huggingface:
   upload_dataset: false                 # Set true to push evaluation results
-  repo_name: "your-hf-username/tts-eval-results"
+  repo_name: "aleks-wordcab/kani-tts-evaluation-results"
   private: true
 
 processing:
-  num_proc: 4                           # Number of processes for data loading
+  num_proc: 32                           # Number of processes for data loading

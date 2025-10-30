@@ -72,7 +72,7 @@ train:
 		echo "$(YELLOW)⚠️  Virtual environment not found. Run 'make setup' first.$(NC)"; \
 		exit 1; \
 	fi
-	@bash -c "source $(VENV_FINETUNE)/bin/activate && python3 lora_finetun.py"
+	@bash -c "source $(VENV_FINETUNE)/bin/activate && python3 lora_finetune.py"
 	@echo ""
 	@echo "$(GREEN)✓ Training complete!$(NC)"
 	@echo "$(MAGENTA)Checkpoints saved to: ./checkpoints/$(NC)"
